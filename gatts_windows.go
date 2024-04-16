@@ -1,6 +1,7 @@
 package bluetooth
 
 import (
+	"fmt"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -9,6 +10,7 @@ import (
 	"github.com/saltosystems/winrt-go"
 	"github.com/saltosystems/winrt-go/windows/devices/bluetooth/genericattributeprofile"
 	"github.com/saltosystems/winrt-go/windows/foundation"
+	"github.com/saltosystems/winrt-go/windows/foundation/collections"
 	"github.com/saltosystems/winrt-go/windows/storage/streams"
 )
 
@@ -236,7 +238,9 @@ func (a *Adapter) AddService(s *Service) error {
 
 // Write replaces the characteristic value with a new value.
 func (c *Characteristic) Write(p []byte) (n int, err error) {
-	if len(p) == 0 {
+	length := len(p)
+
+	if length == 0 {
 		return 0, nil // nothing to do
 	}
 
@@ -253,32 +257,44 @@ func (c *Characteristic) Write(p []byte) (n int, err error) {
 	if c.flags&CharacteristicNotifyPermission != 0 {
 		writer, err := streams.NewDataWriter()
 		if err != nil {
-			return len(p), err
+			return length, err
 		}
 
 		defer writer.Release()
 		err = writer.WriteBytes(uint32(len(p)), p)
 		if err != nil {
-			return len(p), err
+			return length, err
 		}
 
 		buf, err := writer.DetachBuffer()
 		if err != nil {
-			return len(p), err
+			return length, err
 		}
 		defer buf.Release()
 
 		op, err := c.wintCharacteristic.NotifyValueAsync(buf)
 		if err != nil {
-			return len(p), err
+			return length, err
 		}
 
-		if err = awaitAsyncOperation(op); err != nil {
-			return len(p), err
+		// IVectorView<GattClientNotificationResult>
+		signature := fmt.Sprintf("pinterface({%s};%s)", collections.GUIDIVectorView, genericattributeprofile.SignatureGattClientNotificationResult)
+		if err = awaitAsyncOperation(op, signature); err != nil {
+			return length, err
 		}
+		defer op.Release()
+
+		res, err := op.GetResults()
+		if err != nil {
+			return length, err
+		}
+
+		// TODO: process notification results, just getting this to release
+		vec := (*collections.IVectorView)(res)
+		vec.Release()
 	}
 
-	return len(p), nil
+	return length, nil
 }
 
 func syscallUUIDFromUUID(uuid UUID) syscall.GUID {
