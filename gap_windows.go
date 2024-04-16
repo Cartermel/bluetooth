@@ -2,6 +2,7 @@ package bluetooth
 
 import (
 	"fmt"
+	"syscall"
 	"unsafe"
 
 	"github.com/go-ole/go-ole"
@@ -10,12 +11,126 @@ import (
 	"github.com/saltosystems/winrt-go/windows/devices/bluetooth/advertisement"
 	"github.com/saltosystems/winrt-go/windows/devices/bluetooth/genericattributeprofile"
 	"github.com/saltosystems/winrt-go/windows/foundation"
+	"github.com/saltosystems/winrt-go/windows/foundation/collections"
 	"github.com/saltosystems/winrt-go/windows/storage/streams"
 )
 
 // Address contains a Bluetooth MAC address.
 type Address struct {
 	MACAddress
+}
+
+type Advertisement struct {
+	advertisement *advertisement.BluetoothLEAdvertisement
+	publisher     *advertisement.BluetoothLEAdvertisementPublisher
+}
+
+// DefaultAdvertisement returns the default advertisement instance but does not
+// configure it.
+func (a *Adapter) DefaultAdvertisement() *Advertisement {
+	if a.defaultAdvertisement == nil {
+		a.defaultAdvertisement = &Advertisement{}
+	}
+
+	return a.defaultAdvertisement
+}
+
+// Configure this advertisement.
+// on Windows we're only able to set "Manufacturer Data" for advertisements.
+// https://learn.microsoft.com/en-us/uwp/api/windows.devices.bluetooth.advertisement.bluetoothleadvertisementpublisher?view=winrt-22621#remarks
+// following this c# source for this implementation: https://github.com/microsoft/Windows-universal-samples/blob/main/Samples/BluetoothAdvertisement/cs/Scenario2_Publisher.xaml.cs
+// adding service data / localname leads to errors when starting the advertisement.
+func (a *Advertisement) Configure(options AdvertisementOptions) error {
+	if a.advertisement != nil {
+		panic("todo: configure advertisement a second time")
+	}
+
+	// we can only advertise manufacturer / company data on windows, so no need to continue if we have none
+	if len(options.ManufacturerData) == 0 {
+		return nil
+	}
+
+	pub, err := advertisement.NewBluetoothLEAdvertisementPublisher()
+	if err != nil {
+		return err
+	}
+
+	a.publisher = pub
+
+	ad, err := a.publisher.GetAdvertisement()
+	if err != nil {
+		return err
+	}
+
+	vec, err := ad.GetManufacturerData()
+	if err != nil {
+		return err
+	}
+
+	for _, optManData := range options.ManufacturerData {
+		writer, err := streams.NewDataWriter()
+		if err != nil {
+			return err
+		}
+		defer writer.Release()
+
+		err = writer.WriteBytes(uint32(len(optManData.Data)), optManData.Data)
+		if err != nil {
+			return err
+		}
+
+		buf, err := writer.DetachBuffer()
+		if err != nil {
+			return err
+		}
+
+		manData, err := advertisement.BluetoothLEManufacturerDataCreate(optManData.CompanyID, buf)
+		if err != nil {
+			return err
+		}
+
+		err = vecAppend(vec, unsafe.Pointer(&manData.IUnknown.RawVTable))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// cloned from IVector.Append in winrt-go, where the syscall wraps the value again in an
+// unsafe.Pointer unnecessarily, resulting in an exception.
+// TODO: create pr in winrt repo to fix: https://github.com/saltosystems/winrt-go
+func vecAppend(v *collections.IVector, value unsafe.Pointer) error {
+	hr, _, _ := syscall.SyscallN(
+		v.VTable().Append,
+		uintptr(unsafe.Pointer(v)),
+		uintptr(value),
+	)
+
+	if hr != 0 {
+		return ole.NewError(hr)
+	}
+	return nil
+}
+
+// Start advertisement. May only be called after it has been configured.
+func (a *Advertisement) Start() error {
+	// publisher will be present if we actually have manufacturer data to advertise.
+	if a.publisher != nil {
+		return a.publisher.Start()
+	}
+
+	return nil
+}
+
+// Stop advertisement. May only be called after it has been started.
+func (a *Advertisement) Stop() error {
+	if a.publisher != nil {
+		return a.publisher.Stop()
+	}
+
+	return nil
 }
 
 // Scan starts a BLE scan. It is stopped by a call to StopScan. A common pattern
