@@ -21,7 +21,8 @@ type Address struct {
 }
 
 type Advertisement struct {
-	publisher *advertisement.BluetoothLEAdvertisementPublisher
+	advertisement *advertisement.BluetoothLEAdvertisement
+	publisher     *advertisement.BluetoothLEAdvertisementPublisher
 }
 
 // DefaultAdvertisement returns the default advertisement instance but does not
@@ -45,13 +46,17 @@ func (a *Advertisement) Configure(options AdvertisementOptions) error {
 		return nil
 	}
 
+	if a.publisher != nil {
+		a.publisher.Release()
+	}
+
+	if a.advertisement != nil {
+		a.advertisement.Release()
+	}
+
 	pub, err := advertisement.NewBluetoothLEAdvertisementPublisher()
 	if err != nil {
 		return err
-	}
-
-	if a.publisher != nil {
-		a.publisher.Release()
 	}
 
 	a.publisher = pub
@@ -60,6 +65,8 @@ func (a *Advertisement) Configure(options AdvertisementOptions) error {
 	if err != nil {
 		return err
 	}
+
+	a.advertisement = ad
 
 	vec, err := ad.GetManufacturerData()
 	if err != nil {
