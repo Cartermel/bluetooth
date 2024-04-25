@@ -21,8 +21,7 @@ type Address struct {
 }
 
 type Advertisement struct {
-	advertisement *advertisement.BluetoothLEAdvertisement
-	publisher     *advertisement.BluetoothLEAdvertisementPublisher
+	publisher *advertisement.BluetoothLEAdvertisementPublisher
 }
 
 // DefaultAdvertisement returns the default advertisement instance but does not
@@ -41,10 +40,6 @@ func (a *Adapter) DefaultAdvertisement() *Advertisement {
 // following this c# source for this implementation: https://github.com/microsoft/Windows-universal-samples/blob/main/Samples/BluetoothAdvertisement/cs/Scenario2_Publisher.xaml.cs
 // adding service data / localname leads to errors when starting the advertisement.
 func (a *Advertisement) Configure(options AdvertisementOptions) error {
-	if a.advertisement != nil {
-		panic("todo: configure advertisement a second time")
-	}
-
 	// we can only advertise manufacturer / company data on windows, so no need to continue if we have none
 	if len(options.ManufacturerData) == 0 {
 		return nil
@@ -53,6 +48,10 @@ func (a *Advertisement) Configure(options AdvertisementOptions) error {
 	pub, err := advertisement.NewBluetoothLEAdvertisementPublisher()
 	if err != nil {
 		return err
+	}
+
+	if a.publisher != nil {
+		a.publisher.Release()
 	}
 
 	a.publisher = pub
