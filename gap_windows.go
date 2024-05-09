@@ -2,7 +2,6 @@ package bluetooth
 
 import (
 	"fmt"
-	"syscall"
 	"unsafe"
 
 	"github.com/go-ole/go-ole"
@@ -11,7 +10,6 @@ import (
 	"github.com/saltosystems/winrt-go/windows/devices/bluetooth/advertisement"
 	"github.com/saltosystems/winrt-go/windows/devices/bluetooth/genericattributeprofile"
 	"github.com/saltosystems/winrt-go/windows/foundation"
-	"github.com/saltosystems/winrt-go/windows/foundation/collections"
 	"github.com/saltosystems/winrt-go/windows/storage/streams"
 )
 
@@ -95,28 +93,11 @@ func (a *Advertisement) Configure(options AdvertisementOptions) error {
 			return err
 		}
 
-		err = vecAppend(vec, unsafe.Pointer(&manData.IUnknown.RawVTable))
-		if err != nil {
+		if err = vec.Append(unsafe.Pointer(&manData.IUnknown.RawVTable)); err != nil {
 			return err
 		}
 	}
 
-	return nil
-}
-
-// cloned from IVector.Append in winrt-go, where the syscall wraps the value again in an
-// unsafe.Pointer unnecessarily, resulting in an exception.
-// TODO: create pr in winrt repo to fix: https://github.com/saltosystems/winrt-go
-func vecAppend(v *collections.IVector, value unsafe.Pointer) error {
-	hr, _, _ := syscall.SyscallN(
-		v.VTable().Append,
-		uintptr(unsafe.Pointer(v)),
-		uintptr(value),
-	)
-
-	if hr != 0 {
-		return ole.NewError(hr)
-	}
 	return nil
 }
 
