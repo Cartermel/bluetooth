@@ -245,10 +245,6 @@ func (c *Characteristic) Write(p []byte) (n int, err error) {
 		return 0, nil // nothing to do
 	}
 
-	if c.writeEvent != nil {
-		c.writeEvent(0, 0, p)
-	}
-
 	// writes are only actually processed on read events from clients, we just set a variable here.
 	c.valueMtx.Lock()
 	defer c.valueMtx.Unlock()
